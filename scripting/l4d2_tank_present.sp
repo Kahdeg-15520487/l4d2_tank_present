@@ -237,7 +237,6 @@ void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast) {
 void SpawnM60(int clientId) {
 	int chance = GetRandomInt(0, 1000);
 	int mul = g_iCvarChance.IntValue;
-	PrintToChatAll("%i", chance);
 	if (chance < (10 * mul)) {
 		g_iSavior = clientId;
 		HxFakeCHEAT(g_iSavior, "give", "rifle_m60");
