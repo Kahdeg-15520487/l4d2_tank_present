@@ -79,11 +79,11 @@
 #define ZC_TANK         8
 
 #define L4D2_WEPUPGFLAG_LASER  			(1 << 2)
-#define L4D2_WEPUPGFLAG_FIRE			(1<<0)
-#define L4D2_WEPUPGFLAG_EXPLOSION		(1<<1)
+#define L4D2_WEPUPGFLAG_FIRE			(1 << 0)
+#define L4D2_WEPUPGFLAG_EXPLOSION		(1 << 1)
 
-ConVar g_hCvarAllow, g_iCvarChance;
-bool g_bCvarAllow;
+ConVar g_hCvarAllow, g_iCvarChance, g_iCvarEnableFireAmmo;
+bool g_bCvarAllow, g_bCvarFireAmmo;
 int g_iSavior;
 
 // ====================================================================================================
@@ -135,11 +135,13 @@ public void OnPluginStart()
 {
 	g_hCvarAllow = CreateConVar("l4d2_tank_present_enable", "1", "0=Plugin off, 1=Plugin on.", CVAR_FLAGS);
 	g_iCvarChance = CreateConVar("l4d2_tank_present_chance", "1", "% chance of getting a M60 after being hit by a tank.", CVAR_FLAGS, true, 0.0, true, 100.0);
+	g_iCvarEnableFireAmmo = CreateConVar("l4d2_tank_present_enable_fire", "1", "enable m60 spawn with fire ammo for T2 gun.", CVAR_FLAGS, true, 0.0, true, 1.0);
 	
 	CreateConVar("l4d2_tank_present_version", PLUGIN_VERSION, "Tank Give Present plugin version", FCVAR_NOTIFY | FCVAR_DONTRECORD);
 	AutoExecConfig(true, "l4d2_tank_present");
 	
 	g_hCvarAllow.AddChangeHook(ConVarChanged_Allow);
+	g_iCvarEnableFireAmmo.AddChangeHook(ConVarChanged_Allow);
 	
 	g_iSavior = -1;
 	//CreateTimer(5.0, Timer_CheckSavior, _, TIMER_REPEAT);
@@ -171,6 +173,7 @@ void ConVarChanged_Allow(Handle convar, const char[] oldValue, const char[] newV
 void IsAllowed()
 {
 	bool bAllow = GetConVarBool(g_hCvarAllow);
+	g_bCvarFireAmmo = GetConVarBool(g_iCvarEnableFireAmmo);
 	
 	if (g_bCvarAllow == false && bAllow == true)
 	{
@@ -258,9 +261,9 @@ void SpawnM60(int client,int weaponTier) {
 			int upgrades = L4D2_GetWeaponUpgrades(priWeapon); // Get upgrades of primary weapon
 			if (upgrades & L4D2_WEPUPGFLAG_LASER) return; // Primary weapon already has laser sight, return
 			upgrades = upgrades | L4D2_WEPUPGFLAG_LASER;
-			upgrades = upgrades | L4D2_WEPUPGFLAG_FIRE;
+			if (g_bCvarFireAmmo) upgrades = upgrades | L4D2_WEPUPGFLAG_FIRE;
 			L4D2_SetWeaponUpgrades(priWeapon, upgrades);
-			L4D2_SetWeaponUpgradeAmmoCount(priWeapon, 150);
+			if (g_bCvarFireAmmo) L4D2_SetWeaponUpgradeAmmoCount(priWeapon, 150);
 		}
 	}
 }
