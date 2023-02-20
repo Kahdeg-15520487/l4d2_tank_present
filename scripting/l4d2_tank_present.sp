@@ -16,7 +16,7 @@
 *	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#define PLUGIN_VERSION		"1.00"
+#define PLUGIN_VERSION		"1.1"
 
 /*=======================================================================================
 	Plugin Info:
@@ -29,6 +29,10 @@
 
 ========================================================================================
 	Change Log:
+1.1 (20-Feb-2023)
+	- Adjust logic for giving m60
+	- if player have T1 gun, give normal m60
+	- if player have T2 gun, give m60 with laser upgrade
 
 1.0 (13-Feb-2023)
 	- Initial creation.
@@ -44,7 +48,6 @@
 #include <left4dhooks>
 
 #define CVAR_FLAGS				FCVAR_NOTIFY
-
 
 #define TEAM_SPECTATOR          1
 #define TEAM_SURVIVOR           2
@@ -74,6 +77,10 @@
 #define ZC_CHARGER      "charger"
 #define ZC_WITCH        "witch"
 #define ZC_TANK         8
+
+#define L4D2_WEPUPGFLAG_LASER  			(1 << 2)
+#define L4D2_WEPUPGFLAG_FIRE			(1<<0)
+#define L4D2_WEPUPGFLAG_EXPLOSION		(1<<1)
 
 ConVar g_hCvarAllow, g_iCvarChance;
 bool g_bCvarAllow;
@@ -208,7 +215,7 @@ Action OnWeaponDrop(int clientId, int weaponEntId) {
 }
 
 void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast) {
-	if (!g_bCvarAllow)return;
+	if (!g_bCvarAllow) return;
 	int victimId = event.GetInt("userid");
 	int victimClientId = GetClientOfUserId(victimId);
 	int attackerId = event.GetInt("attacker");
@@ -223,31 +230,69 @@ void Event_PlayerHurt(Event event, const char[] name, bool dontBroadcast) {
 			if (slot1 != -1) {
 				char weaponSlot1[255];
 				GetEntPropString(slot1, Prop_Data, "m_ModelName", weaponSlot1, sizeof(weaponSlot1) - 1);
-				if (g_iSavior == -1 && IsWeaponTier1(weaponSlot1)) {
-					SpawnM60(victimClientId);
+				int weaponTier = GetWeaponTier(weaponSlot1);
+				if (g_iSavior == -1 && weaponTier != 0) {
+					SpawnM60(victimClientId, weaponTier);
 				}
 			} else {
-				SpawnM60(victimClientId);
+				SpawnM60(victimClientId, 0);
 			}
 		}
 		
 	}
 }
 
-void SpawnM60(int clientId) {
+void SpawnM60(int client,int weaponTier) {
 	int chance = GetRandomInt(0, 1000);
 	int mul = g_iCvarChance.IntValue;
 	if (chance < (10 * mul)) {
-		g_iSavior = clientId;
+		g_iSavior = client;
 		HxFakeCHEAT(g_iSavior, "give", "rifle_m60");
+		
+		if (weaponTier == 2){
+			int priWeapon = GetPlayerWeaponSlot(client, 0); // Get primary weapon
+			if (priWeapon <= 0 || !IsValidEntity(priWeapon)) return; // Invalid weapon, return
+		
+			if (!L4D2_CanWeaponUpgrades(priWeapon)) return; // This weapon does not support upgrades
+		
+			int upgrades = L4D2_GetWeaponUpgrades(priWeapon); // Get upgrades of primary weapon
+			if (upgrades & L4D2_WEPUPGFLAG_LASER) return; // Primary weapon already has laser sight, return
+			upgrades = upgrades | L4D2_WEPUPGFLAG_LASER;
+			upgrades = upgrades | L4D2_WEPUPGFLAG_FIRE;
+			L4D2_SetWeaponUpgrades(priWeapon, upgrades);
+			L4D2_SetWeaponUpgradeAmmoCount(priWeapon, 150);
+		}
 	}
 }
 
-bool IsWeaponTier1(char[] weaponModelName) {
-	if (StrContains(weaponModelName, "v_pumpshotgun", false) != -1 || StrContains(weaponModelName, "v_shotgun_chrome", false) != -1 || StrContains(weaponModelName, "v_smg", false) != -1 || StrContains(weaponModelName, "v_smg_mp5", false) != -1 || StrContains(weaponModelName, "v_silenced_smg", false) != -1) {
-		return true;
+int GetWeaponTier(char[] weaponModelName) {
+	if (StrContains(weaponModelName, "v_pumpshotgun", false) != -1 
+	 || StrContains(weaponModelName, "v_shotgun_chrome", false) != -1
+	 || StrContains(weaponModelName, "v_smg", false) != -1
+	 || StrContains(weaponModelName, "v_smg_mp5", false) != -1
+	 || StrContains(weaponModelName, "v_silenced_smg", false) != -1) {
+		return 1;
 	}
-	return false;
+	if (StrContains(weaponModelName, "v_rifle", false) != -1 
+	 || StrContains(weaponModelName, "v_rifle_AK47", false) != -1 
+	 || StrContains(weaponModelName, "v_desert_rifle", false) != -1 
+	 || StrContains(weaponModelName, "v_rif_sg552", false) != -1 
+	 || StrContains(weaponModelName, "v_autoshotgun", false) != -1
+	 || StrContains(weaponModelName, "v_shotgun_spas", false) != -1
+	 || StrContains(weaponModelName, "v_snip_awp", false) != -1
+	 || StrContains(weaponModelName, "v_sniper_military", false) != -1
+	 || StrContains(weaponModelName, "v_snip_scout", false) != -1
+	 || StrContains(weaponModelName, "v_huntingrifle", false) != -1) {
+		return 2;
+	}
+	return 0;
+}
+
+
+// Made this myself, based on the two codes below
+bool L4D2_CanWeaponUpgrades(int weapon)
+{
+	return (GetEntSendPropOffs(weapon, "m_upgradeBitVec") > -1);
 }
 
 void HxFakeCHEAT(int &client, const char[] sCmd, const char[] sArg)
@@ -256,4 +301,39 @@ void HxFakeCHEAT(int &client, const char[] sCmd, const char[] sArg)
 	SetCommandFlags(sCmd, iFlags & ~FCVAR_CHEAT);
 	FakeClientCommand(client, "%s %s", sCmd, sArg);
 	SetCommandFlags(sCmd, iFlags);
-} 
+}
+/*
+special
+weapon_grenade_launcher
+weapon_rifle_m60
+
+melee
+weapon_chainsaw
+weapon_melee
+
+deagle
+weapon_pistol_magnum
+
+rifle
+weapon_rifle				v_rifle.mdl
+weapon_rifle_ak47			v_rifle_AK47.mdl
+weapon_rifle_desert			v_desert_rifle.mdl
+weapon_rifle_sg552			v_rif_sg552.mdl
+
+shotgun
+weapon_pumpshotgun			v_pumpshotgun
+weapon_shotgun_chrome		v_shotgun_chrome
+weapon_autoshotgun			v_autoshotgun.mdl
+weapon_shotgun_spas			v_shotgun_spas.mdl
+
+smg
+weapon_smg					v_smg
+weapon_smg_mp5				v_smg_mp5
+weapon_smg_silenced			v_silenced_smg
+
+sniper
+weapon_sniper_awp			v_snip_awp.mdl
+weapon_sniper_military		v_sniper_military.mdl
+weapon_sniper_scout			v_snip_scout.mdl
+weapon_hunting_rifle		v_huntingrifle.mdl
+*/
